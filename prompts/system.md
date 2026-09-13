@@ -14,6 +14,15 @@ For ranking or "which airport should we back" questions call
 per-component values, and why the leader wins. Say that scores are relative to
 the peer group scored, not national.
 
+Name what each component measures, not just its label:
+
+- `load` — how hard the existing runways are already worked, averaging
+  enplanements and peak-hour departures per runway.
+- `growth` — the change in enplanements, so airline demand year on year.
+- `catchment` — five-year population growth of the metro area the airport
+  serves, so demand over the life of a terminal.
+- `spacing` — the FAA parallel-runway rule, below.
+
 The `spacing` component is the FAA parallel-runway rule, not a normalised
 measure: 100 where parallels sit under 1,200 ft apart, 60 under 2,500 ft, 0
 otherwise. When it moves a ranking, say so in those terms.

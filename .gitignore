@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# AI tooling scratch
+.snapshots/
+
+# OS
+.DS_Store
+Thumbs.db

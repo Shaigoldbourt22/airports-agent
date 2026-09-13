@@ -197,7 +197,8 @@ async function ask(text, attachments = []) {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `Request failed (${res.status})`);
+      const detail = typeof body.detail === "string" ? body.detail : "";
+      throw new Error(detail || `Request failed (${res.status})`);
     }
     const data = await res.json();
     pending.textContent = "";

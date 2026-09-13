@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import agent, sessions, telemetry
 
@@ -70,8 +70,16 @@ class Attachment(BaseModel):
 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(max_length=4000)
+    content: str = Field(max_length=40000)
     attachments: list[Attachment] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def check_user_length(self) -> "Message":
+        # Replayed assistant turns carry whole tables, so only the typed
+        # question is held to the short limit.
+        if self.role == "user" and len(self.content) > 4000:
+            raise ValueError("Question exceeds 4000 characters")
+        return self
 
 
 class ChatRequest(BaseModel):

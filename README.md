@@ -11,7 +11,7 @@ history from another's; it is not a restriction.
 **Source:** [github.com/Shaigoldbourt22/airports-agent](https://github.com/Shaigoldbourt22/airports-agent)
 
 Design and scoring methodology: [docs/DESIGN.md](docs/DESIGN.md).
-Data sources and known gaps: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
+Data sources: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
 
 ## Run it locally
 
@@ -32,6 +32,9 @@ snapshot; the deployed app refreshes its own copy monthly. To rebuild it:
 .\.venv\Scripts\python etl\build_db.py --months 12
 ```
 
+Downloads are cached, so a second run takes about a minute rather than half an
+hour. Add `--refresh` to fetch every source again.
+
 ## Tests
 
 ```powershell
@@ -45,7 +48,7 @@ pytest -m llm       # golden questions against a deployment; needs AGENT_URL
 |---|---|
 | `app/` | FastAPI service, agent loop, tools, session store |
 | `prompts/` | The system prompt |
-| `etl/` | Builds `data/airports.db` from FAA and BTS sources |
+| `etl/` | Builds `data/airports.db` from FAA, BTS, OurAirports and Census sources |
 | `static/` | Chat UI |
 | `tests/` | Scoring tests and the golden questions |
 | `deploy/` | Script that creates the scheduled ETL job |

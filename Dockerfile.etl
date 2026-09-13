@@ -1,0 +1,16 @@
+# Rebuilds data/airports.db from public sources, then exits.
+# Run as an Azure Container Apps Job, not as a web service.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements-etl.txt .
+RUN pip install --no-cache-dir -r requirements-etl.txt
+
+COPY etl/ ./etl/
+
+# Written to the mounted Azure Files share so the web app picks it up.
+ENV DB_DIR=/data
+ENV BTS_MONTHS=12
+
+CMD ["sh", "-c", "python etl/build_db.py --months $BTS_MONTHS"]

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Airport Investment Intelligence Agent</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <aside id="sidebar">
+    <button type="button" id="new-chat">New chat</button>
+    <nav id="session-list" aria-label="Previous chats"></nav>
+  </aside>
+
+  <div id="shell">
+    <header>
+      <button type="button" id="toggle-sidebar" aria-label="Toggle chat history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
+      </button>
+      <h1>Airport Investment Intelligence</h1>
+      <span class="badge">Preview</span>
+      <div class="account" hidden>
+        <span id="user-email"></span>
+        <a href="/.auth/logout?post_logout_redirect_uri=/">Sign out</a>
+      </div>
+    </header>
+
+  <main id="log" aria-live="polite">
+    <section id="welcome">
+      <h2>What can I help you analyze?</h2>
+      <div class="chips">
+        <button type="button" class="chip">Which airports in New England are strong candidates for terminal expansion?</button>
+        <button type="button" class="chip">Compare LA and Santa Ana airport congestion levels.</button>
+        <button type="button" class="chip">What is the unmet flight demand at SFO and why?</button>
+      </div>
+    </section>
+  </main>
+
+  <form id="composer">
+    <div class="composer-inner">
+      <div id="attachments" hidden></div>
+      <div class="field">
+        <textarea id="input" rows="1" placeholder="Ask anything about US airport investment&hellip;"></textarea>
+        <input type="file" id="file" multiple hidden
+               accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv" />
+        <div class="actions">
+          <button type="button" id="attach" title="Attach a photo or document" aria-label="Attach file">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <button type="button" id="mic" title="Speak" aria-label="Speak">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/></svg>
+          </button>
+          <button type="submit" id="send" aria-label="Send">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="hint">Data sources and scoring are not wired up yet. Verify any figures.</p>
+    </div>
+  </form>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

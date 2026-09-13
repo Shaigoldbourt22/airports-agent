@@ -1,0 +1,8 @@
+.git
+.venv
+.snapshots
+.env
+.env.*
+raw_metadata
+__pycache__
+*.pyc

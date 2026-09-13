@@ -1,0 +1,76 @@
+name: Deploy
+
+# The web app redeploys on every push to main.
+# The ETL image is rebuilt only when ETL code changes, and the job is
+# repointed at the new tag. The job is never started here - the cron
+# schedule is the only thing that runs a data fetch. Use the manual
+# "Run workflow" button with run_etl=true to force a refresh.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_etl:
+        description: Start the ETL job once after deploying
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  RG: airports-agent-rg
+  ACR: ca61231809e1acr
+  APP: airports-agent
+  JOB: airports-etl
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      etl: ${{ steps.filter.outputs.etl }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            etl:
+              - 'etl/**'
+              - 'Dockerfile.etl'
+              - 'requirements-etl.txt'
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build image
+        run: az acr build --registry $ACR --image $APP:${{ github.sha }} --no-logs .
+      - name: Update container app
+        run: az containerapp update -n $APP -g $RG --image $ACR.azurecr.io/$APP:${{ github.sha }} -o none
+
+  etl:
+    needs: changes
+    if: needs.changes.outputs.etl == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build ETL image
+        run: az acr build --registry $ACR --image $JOB:${{ github.sha }} -f Dockerfile.etl --no-logs .
+      - name: Point the scheduled job at the new image
+        run: az containerapp job update -n $JOB -g $RG --image $ACR.azurecr.io/$JOB:${{ github.sha }} -o none
+      - name: Run ETL now
+        if: inputs.run_etl
+        run: az containerapp job start -n $JOB -g $RG -o none

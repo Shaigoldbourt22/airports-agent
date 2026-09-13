@@ -11,6 +11,21 @@ venv/
 
 # AI tooling scratch
 .snapshots/
+.playwright-mcp/
+
+# Local scratch output
+*.log
+scripts/
+
+# Built artefact — rebuild with: python etl/build_db.py
+data/airports.db
+data/*.building
+
+# Local chat history
+data/sessions.db*
+
+# Editor
+.vscode/
 
 # OS
 .DS_Store

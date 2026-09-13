@@ -27,6 +27,20 @@ env:
   JOB: airports-etl
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install -q -r requirements.txt -r requirements-dev.txt
+      # Scoring and query checks only. The golden questions call the Gemini
+      # API and need a built database, so they are run locally before a
+      # prompt or tool change ships.
+      - run: pytest
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -43,6 +57,7 @@ jobs:
               - 'requirements-etl.txt'
 
   app:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +72,7 @@ jobs:
         run: az containerapp update -n $APP -g $RG --image $ACR.azurecr.io/$APP:${{ github.sha }} -o none
 
   etl:
-    needs: changes
+    needs: [test, changes]
     if: needs.changes.outputs.etl == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:

@@ -147,6 +147,11 @@ header h1 {
   font-weight: 600;
 }
 
+#logo {
+  border-radius: 7px;
+  flex: none;
+}
+
 .badge {
   padding: 2px 8px;
   border-radius: 999px;

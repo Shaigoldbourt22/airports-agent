@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir --disable-pip-version-check --progress-bar off -q
 
 COPY app ./app
 COPY static ./static
+COPY prompts ./prompts
 
 EXPOSE 8000
 

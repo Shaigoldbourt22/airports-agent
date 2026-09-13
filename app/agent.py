@@ -7,6 +7,7 @@ results into prose but never produces a figure of its own.
 import base64
 import logging
 import os
+from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -26,21 +27,8 @@ class ContentBlocked(RuntimeError):
     """The prompt or the response was refused by the safety filters."""
 
 
-SYSTEM_INSTRUCTION = (
-    "You are an airport investment intelligence assistant for analysts at a firm "
-    "that invests in US airport modernization projects.\n"
-    "Every figure you state must come from a tool result in this conversation. "
-    "Never estimate, recall or interpolate a number. If the tools cannot answer, "
-    "say which data is missing.\n"
-    "For ranking or 'which airport should we back' questions call "
-    "rank_expansion_candidates, then explain the score: give the weights, the "
-    "per-component values, and why the leader wins. Say that scores are relative "
-    "to the peer group scored, not national.\n"
-    "Name the caveats the data carries: BTS covers US carriers only, enplanement "
-    "figures are preliminary, and the database holds a limited range of months "
-    "which data_coverage will tell you.\n"
-    "Answer in short prose with a compact table when comparing airports."
-)
+PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system.md"
+SYSTEM_INSTRUCTION = PROMPT_PATH.read_text(encoding="utf-8")
 
 MAX_TOOL_TURNS = 6
 
@@ -89,7 +77,7 @@ def _classify(exc: Exception) -> Exception:
     return exc
 
 
-def _call_tool(call: types.FunctionCall) -> types.Part:
+def _call_tool(call: types.FunctionCall, record: list | None = None) -> types.Part:
     """Run one tool and wrap its result for the model. Errors go back as data."""
     args = dict(call.args or {})
     with telemetry.timed("tool_call", tool=call.name, args=sorted(args)):
@@ -101,6 +89,8 @@ def _call_tool(call: types.FunctionCall) -> types.Part:
                 result = function(**args)
             except Exception as exc:
                 result = {"error": f"{type(exc).__name__}: {exc}"}
+    if record is not None:
+        record.append({"tool": call.name, "args": args, "result": result})
     return types.Part.from_function_response(name=call.name, response={"result": result})
 
 
@@ -121,8 +111,13 @@ def _generate(model: str, contents: list[types.Content]):
         raise _classify(exc) from exc
 
 
-def reply(messages: list[dict]) -> str:
-    """Return the assistant's reply, running any tools the model asks for."""
+def reply(messages: list[dict], trace: list | None = None) -> str:
+    """Return the assistant's reply, running any tools the model asks for.
+
+    Pass trace to collect one {tool, args, result} entry per tool call, in
+    order. The evaluation suite uses it to check that every figure in the
+    answer came from a tool.
+    """
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     attachments = sum(len(m.get("attachments") or []) for m in messages)
     contents = _to_contents(messages)
@@ -136,7 +131,7 @@ def reply(messages: list[dict]) -> str:
                 break
             contents.append(response.candidates[0].content)
             contents.append(types.Content(
-                role="user", parts=[_call_tool(c) for c in calls]
+                role="user", parts=[_call_tool(c, trace) for c in calls]
             ))
         else:
             telemetry.event("tool_loop_exhausted", level=logging.WARNING, model=model)

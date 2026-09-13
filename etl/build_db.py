@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import math
 import os
 import shutil
 import sqlite3
@@ -59,7 +60,12 @@ CREATE TABLE airport (
     latitude      REAL,
     longitude     REAL,
     runway_count  INTEGER,
-    longest_ft    INTEGER
+    longest_ft    INTEGER,
+    -- Distance between the closest pair of parallel runways. Under FAA rules
+    -- parallels closer than 2,500 ft cannot take independent approaches in
+    -- poor visibility, and below 1,200 ft they work as a single runway. This
+    -- is why some airports lose arrival capacity the moment the weather turns.
+    parallel_ft   INTEGER
 );
 
 CREATE TABLE enplanement (
@@ -164,6 +170,40 @@ def download(url: str, name: str) -> Path:
     return path
 
 
+def _haversine_mi(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in statute miles."""
+    radius = 3958.8
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlon / 2) ** 2)
+    return 2 * radius * math.asin(math.sqrt(a))
+
+
+def _parallel_spacing_ft(ends: list[tuple[str, float, float]]) -> int | None:
+    """Closest distance between two parallel runways, in feet.
+
+    Runways are parallel when their numbers match, so 28L and 28R are a pair.
+    Distance is measured between the two approach thresholds, which is the
+    centreline separation for parallels.
+    """
+    by_heading: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for ident, lat, lon in ends:
+        number = "".join(ch for ch in ident if ch.isdigit())
+        if number:
+            by_heading[number.zfill(2)].append((lat, lon))
+
+    best = None
+    for points in by_heading.values():
+        for i, first in enumerate(points):
+            for second in points[i + 1:]:
+                feet = _haversine_mi(*first, *second) * 5280
+                if feet > 50 and (best is None or feet < best):
+                    best = feet
+    return int(best) if best else None
+
+
 def load_airports(con: sqlite3.Connection) -> set[str]:
     """Airport reference and runway geometry from OurAirports."""
     log("airports (OurAirports)")
@@ -171,6 +211,7 @@ def load_airports(con: sqlite3.Connection) -> set[str]:
     rw_path = download(OURAIRPORTS.format(name="runways"), "runways.csv")
 
     runways: dict[str, list[int]] = defaultdict(list)
+    ends: dict[str, list[tuple[str, float, float]]] = defaultdict(list)
     with open(rw_path, encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             ident = row["airport_ident"]
@@ -178,6 +219,14 @@ def load_airports(con: sqlite3.Connection) -> set[str]:
                 runways[ident].append(int(float(row["length_ft"] or 0)))
             except ValueError:
                 continue
+            if row["closed"] == "1":
+                continue
+            for side in ("le", "he"):
+                lat, lon = row[f"{side}_latitude_deg"], row[f"{side}_longitude_deg"]
+                if lat and lon:
+                    ends[ident].append(
+                        (row[f"{side}_ident"] or "", float(lat), float(lon))
+                    )
 
     rows = []
     with open(ap_path, encoding="utf-8") as fh:
@@ -199,10 +248,11 @@ def load_airports(con: sqlite3.Connection) -> set[str]:
                 float(row["longitude_deg"]) if row["longitude_deg"] else None,
                 len(lengths),
                 max(lengths) if lengths else None,
+                _parallel_spacing_ft(ends.get(row["ident"], [])),
             ))
 
     con.executemany(
-        "INSERT OR REPLACE INTO airport VALUES (?,?,?,?,?,?,?,?,?,?)", rows
+        "INSERT OR REPLACE INTO airport VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows
     )
     con.execute(
         "INSERT OR REPLACE INTO source_meta VALUES (?,?,?,?)",

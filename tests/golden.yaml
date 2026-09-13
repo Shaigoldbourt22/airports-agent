@@ -1,0 +1,47 @@
+# Golden questions: the four the agent was built to answer.
+#
+# Each case states which tools the answer must come from and what a correct
+# answer has to contain. The rubric is graded by a second Gemini call, because
+# these answers are prose and there is no single correct wording.
+
+- id: terminal_expansion
+  question: Which airports in New England are strong candidates for terminal expansion?
+  must_call: [rank_expansion_candidates]
+  rubric: |
+    - Names one airport as the leading candidate and gives its score.
+    - Explains the score: names the weighted components (growth, enplanements
+      per runway, peak-hour departures per runway) and why the leader wins.
+    - States that scores are relative to the peer group, not national.
+    - Covers several New England airports, not just one.
+    - Does not claim a gate count for any airport.
+
+- id: lax_vs_sna
+  question: Compare LA and Santa Ana airport congestion levels.
+  must_call: [compare_airports]
+  rubric: |
+    - Reaches a clear verdict on which is more congested.
+    - Cites delay percentages for both LAX and SNA.
+    - Normalises for size somehow: per-runway load, or notes SNA carries far
+      less traffic on fewer runways.
+    - Does not treat raw flight counts alone as proof of congestion.
+
+- id: anc_longhaul
+  question: What is the percentage of long haul flights out of Anchorage airport?
+  must_call: [route_distance_mix]
+  rubric: |
+    - Gives a percentage for long-haul departures from ANC.
+    - States the distance threshold used (3,000 miles).
+    - Shows the figure varies by month, or gives a summer and a winter value.
+    - Says the threshold is a chosen definition, not an official standard,
+      or notes BTS covers US carriers only.
+
+- id: sfo_unmet_demand
+  question: What is the unmet flight demand in SFO airport and why?
+  must_call: [peak_hour_demand]
+  rubric: |
+    - Quantifies unmet demand as the gap between scheduled and delivered
+      flights in the peak hour.
+    - Gives the scheduled figure and the actual figure.
+    - Explains the cause with a physical or regulatory constraint, such as
+      closely spaced parallel runways limiting arrivals in poor weather.
+    - Does not invent a capacity number that no tool returned.

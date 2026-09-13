@@ -39,6 +39,7 @@ def airport_profile(iata: str) -> dict:
     rows = db.query(
         """
         SELECT a.iata, a.name, a.city, a.state, a.runway_count, a.longest_ft,
+               a.parallel_ft,
                e.year, e.enplanements, e.pct_change, e.hub, e.rank,
                c.landed_lbs, c.rank AS cargo_rank
         FROM airport a
@@ -82,6 +83,11 @@ def peak_hour_demand(iata: str, year: int | None = None, month: int | None = Non
 
     The gap between peak scheduled arrivals and peak actual arrivals is unmet
     demand: flights the schedule asked for that the runways could not absorb.
+
+    Returns the runway geometry alongside it, because that is usually the
+    cause. FAA rules bar independent approaches to parallel runways spaced
+    under 2,500 ft in poor visibility, and parallels under 1,200 ft apart work
+    as a single runway, so arrival capacity drops sharply when cloud moves in.
     """
     sql = """
         SELECT year, month, hour, peak_sched_arr, peak_actual_arr, peak_sched_dep,
@@ -96,7 +102,38 @@ def peak_hour_demand(iata: str, year: int | None = None, month: int | None = Non
         sql += " AND month = ?"
         params.append(month)
     rows = db.query(sql + " ORDER BY peak_sched_arr DESC LIMIT 5", tuple(params))
-    return {"iata": iata.upper(), "busiest_hours": rows}
+
+    geometry = db.query(
+        "SELECT runway_count, longest_ft, parallel_ft FROM airport WHERE iata = ?",
+        (iata.upper(),),
+    )
+    constraint = None
+    if geometry and geometry[0]["parallel_ft"]:
+        spacing = geometry[0]["parallel_ft"]
+        if spacing < 1200:
+            constraint = (
+                f"Closest parallel runways are {spacing:,} ft apart, under the "
+                "1,200 ft minimum for simultaneous operations, so they are "
+                "worked as one runway in poor visibility."
+            )
+        elif spacing < 2500:
+            constraint = (
+                f"Closest parallel runways are {spacing:,} ft apart, below the "
+                "2,500 ft FAA minimum for independent approaches, so arrival "
+                "rates fall when visibility drops."
+            )
+        else:
+            constraint = (
+                f"Closest parallel runways are {spacing:,} ft apart, enough for "
+                "independent approaches in poor visibility."
+            )
+
+    return {
+        "iata": iata.upper(),
+        "busiest_hours": rows,
+        "runways": geometry[0] if geometry else None,
+        "capacity_constraint": constraint,
+    }
 
 
 def route_distance_mix(iata: str, threshold_mi: int = LONGHAUL_MI) -> dict:
@@ -129,6 +166,30 @@ def route_distance_mix(iata: str, threshold_mi: int = LONGHAUL_MI) -> dict:
             "routes_over_threshold": routes}
 
 
+def cargo_growth(min_lbs: int = 100_000_000, limit: int = 10) -> dict:
+    """Airports ranked by cargo growth, with the tiny-base noise filtered out.
+
+    An airport handling a few tonnes can post +100% and mean nothing, so a
+    minimum annual landed weight is applied. The excluded high-percentage
+    airports are returned too, so the filter can be reported rather than hidden.
+    """
+    rows = db.query(
+        """
+        SELECT c.iata, a.name, a.state, c.landed_lbs, c.pct_change, c.rank
+        FROM cargo c JOIN airport a ON a.iata = c.iata
+        ORDER BY c.pct_change DESC
+        """
+    )
+    big = [r for r in rows if r["landed_lbs"] >= min_lbs]
+    noise = [r for r in rows if r["landed_lbs"] < min_lbs and (r["pct_change"] or 0) > 0.2]
+    return {
+        "ranked": big[:limit],
+        "declining": sorted(big, key=lambda r: r["pct_change"] or 0)[:5],
+        "excluded_small_base": noise[:5],
+        "min_lbs": min_lbs,
+    }
+
+
 def compare_airports(iatas: list[str]) -> dict:
     """Side-by-side KPIs for two or more airports, for congestion comparisons.
 
@@ -140,6 +201,7 @@ def compare_airports(iatas: list[str]) -> dict:
     rows = db.query(
         f"""
         SELECT a.iata, a.name, a.state, a.runway_count, a.longest_ft,
+               a.parallel_ft,
                e.enplanements, e.pct_change, e.hub,
                SUM(m.departures) AS departures,
                ROUND(100.0 * SUM(m.dep_del15) / NULLIF(SUM(m.departures), 0), 1) AS dep_delay_pct,
@@ -226,6 +288,7 @@ REGISTRY = {
         traffic_and_delays,
         peak_hour_demand,
         route_distance_mix,
+        cargo_growth,
         compare_airports,
         rank_expansion_candidates,
     )

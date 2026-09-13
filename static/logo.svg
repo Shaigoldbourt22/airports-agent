@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Airport Investment Intelligence">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f6fed"/>
+      <stop offset="1" stop-color="#12b3a6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <path fill="#fff" d="M32 12c1.5 0 2.6 1.3 2.6 2.9v9.4l14.1 8.2v4.2l-14.1-4.3v9l4.9 3.6v3.4L32 46.6l-7.5 1.8v-3.4l4.9-3.6v-9l-14.1 4.3v-4.2l14.1-8.2v-9.4c0-1.6 1.1-2.9 2.6-2.9z"/>
+  <circle cx="32" cy="54" r="2.3" fill="#fff" opacity=".55"/>
+</svg>

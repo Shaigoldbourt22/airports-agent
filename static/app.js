@@ -197,8 +197,13 @@ async function ask(text, attachments = []) {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      const detail = typeof body.detail === "string" ? body.detail : "";
-      throw new Error(detail || `Request failed (${res.status})`);
+      // Validation errors arrive as a list of objects, everything else as text.
+      const detail = Array.isArray(body.detail)
+        ? body.detail[0]?.msg?.replace(/^Value error, /, "")
+        : body.detail;
+      throw new Error(
+        typeof detail === "string" && detail ? detail : `Request failed (${res.status})`,
+      );
     }
     const data = await res.json();
     pending.textContent = "";

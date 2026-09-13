@@ -5,11 +5,13 @@ given airport can be written down rather than read back from whatever the last
 ETL run produced. Six airports are enough to exercise ranking, the small-base
 cargo filter, distance thresholds and missing-data handling.
 
-The schema is imported from etl/build_db.py, so a column added there without a
-matching change here fails the tests instead of silently drifting.
+The schema is read out of etl/build_db.py, so a column added there without a
+matching change here fails the tests instead of silently drifting. It is read
+as text rather than imported, because importing the ETL would pull in its
+data-processing dependencies for no benefit.
 """
 
-import importlib.util
+import re
 import sqlite3
 from pathlib import Path
 
@@ -17,13 +19,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _schema() -> str:
-    """The production schema, loaded without running the ETL."""
-    spec = importlib.util.spec_from_file_location(
-        "build_db", ROOT / "etl" / "build_db.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.SCHEMA
+    """The CREATE statements from the ETL, without importing it."""
+    source = (ROOT / "etl" / "build_db.py").read_text(encoding="utf-8")
+    match = re.search(r'^SCHEMA = """(.*?)"""', source, re.DOTALL | re.MULTILINE)
+    if not match:
+        raise RuntimeError("SCHEMA not found in etl/build_db.py")
+    return match.group(1)
 
 
 # iata, icao, name, city, state, region, lat, lon, runways, longest_ft, parallel_ft

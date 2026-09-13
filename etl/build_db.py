@@ -26,6 +26,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -38,6 +39,7 @@ import openpyxl
 # by path rather than as a package.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import census  # noqa: E402
+import cats  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("DB_DIR", ROOT / "data")) / "airports.db"
@@ -48,6 +50,10 @@ FAA_PAGE = "https://www.faa.gov/airports/planning_capacity/passenger_allcargo_st
 BTS_ONTIME = (
     "https://transtats.bts.gov/PREZIP/"
     "On_Time_Reporting_Carrier_On_Time_Performance_1987_present_{year}_{month}.zip"
+)
+NPIAS = (
+    "https://www.faa.gov/sites/faa.gov/files/airports/planning_capacity/npias/"
+    "current/ARP-NPIAS-2025-2029-AppendixA.xlsx"
 )
 
 # No public dataset publishes gate counts or terminal floor area. Terminal
@@ -150,7 +156,7 @@ CREATE TABLE catchment (
     metro         TEXT NOT NULL,
     population    INTEGER NOT NULL,
     prev_pop      INTEGER NOT NULL,
-    pop_growth    REAL NOT NULL,
+    pop_growth    REAL NOT NULL,   -- percent over `years`, as pct_change is
     years         TEXT NOT NULL
 );
 
@@ -159,6 +165,52 @@ CREATE TABLE source_meta (
     url           TEXT NOT NULL,
     fetched       TEXT NOT NULL,
     coverage      TEXT
+);
+
+-- The FAA's own estimate of eligible development cost over five years, one row
+-- per airport in the national plan. This is the only cost figure in the
+-- database: everything else measures demand or constraint, none of it says
+-- what building anything would take. Divided by annual enplanements it gives
+-- capital needed per passenger served, which does not move with traffic.
+--
+-- It is *needed* development, not committed or funded spend, and it covers
+-- airside work as well as terminal work, so it cannot be read as a terminal
+-- price. It is published every two years, so it is coarser in time than the
+-- monthly flight data.
+CREATE TABLE development_need (
+    iata          TEXT PRIMARY KEY,
+    period        TEXT NOT NULL,
+    estimate_usd  INTEGER NOT NULL,
+    role          TEXT,
+    service_level TEXT
+);
+
+-- What an airport earns and spends, from its own FAA Form 127 filing. The
+-- rest of the database measures demand and physical constraint; this is the
+-- only place that says whether a site makes money from the passengers it
+-- already has.
+--
+-- non_aeronautical_revenue is the terminal's own commercial take: food,
+-- retail, parking, rental cars. Divided by enplanements it shows spend per
+-- passenger, and a busy airport with a low figure is under-monetising traffic
+-- it already holds, which is what a terminal renovation is meant to fix.
+-- Aeronautical revenue cannot show that, because landing fees track aircraft
+-- weight rather than the quality of the terminal.
+CREATE TABLE financials (
+    iata                     TEXT NOT NULL,
+    year                     INTEGER NOT NULL,
+    aeronautical_revenue     INTEGER,
+    terminal_food_beverage   INTEGER,
+    terminal_retail          INTEGER,
+    parking_ground_transport INTEGER,
+    non_aeronautical_revenue INTEGER,
+    operating_revenue        INTEGER,
+    operating_expenses       INTEGER,
+    operating_income         INTEGER,
+    capex_terminal           INTEGER,
+    capex_total              INTEGER,
+    total_debt               INTEGER,
+    PRIMARY KEY (iata, year)
 );
 
 CREATE INDEX idx_month_iata ON airport_month(iata);
@@ -170,27 +222,57 @@ CREATE INDEX idx_airport_state ON airport(state);
 
 LONGHAUL_MI = 3000
 
+# How long BTS keeps revising a month after publishing it. Beyond this the
+# figures stop moving, so a cached archive of that month stays valid.
+BTS_SETTLES_AFTER_MONTHS = 6
+
+# Set by --refresh to force every source to be fetched again.
+CACHE_MAX_AGE_OVERRIDE: int | None = None
+
 # Geocoding costs one request per airport, so only airports large enough to
 # appear in a ranking are looked up.
 CATCHMENT_MIN_ENPLANEMENTS = 250_000
+
+# Form 127 costs one request per airport too, and filings run a year or two
+# behind, so recent years are tried in turn until one has data.
+FINANCIALS_MIN_ENPLANEMENTS = 250_000
+CATS_YEARS = (2024, 2023, 2022)
 
 
 def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def download(url: str, name: str) -> Path:
-    """Fetch a URL into the cache directory, reusing an existing copy."""
+def download(url: str, name: str, max_age_days: int = 30) -> Path:
+    """Fetch a URL into the cache directory, reusing a copy that is still fresh.
+
+    Caching matters: a full run pulls twelve BTS monthly archives of roughly
+    250 MB each, so reusing them turns a half-hour rebuild into a minute. But a
+    cache with no expiry is worse than none, because the run stops reflecting
+    the sources and nothing says so. Anything older than max_age_days is
+    fetched again.
+
+    Pass max_age_days=0 to force a refetch.
+    """
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / name
+    if CACHE_MAX_AGE_OVERRIDE is not None:
+        max_age_days = CACHE_MAX_AGE_OVERRIDE
     if path.exists() and path.stat().st_size > 0:
-        log(f"  cached  {name}")
-        return path
+        age_days = (time.time() - path.stat().st_mtime) / 86400
+        if age_days <= max_age_days:
+            log(f"  cached  {name} ({age_days:.0f}d old)")
+            return path
+        log(f"  stale   {name} ({age_days:.0f}d old), refetching")
     log(f"  fetching {name}")
+    tmp = path.with_suffix(path.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "airports-agent/1.0"})
-    with urllib.request.urlopen(req, timeout=600) as resp, open(path, "wb") as fh:
+    with urllib.request.urlopen(req, timeout=600) as resp, open(tmp, "wb") as fh:
         while chunk := resp.read(1 << 20):
             fh.write(chunk)
+    # Rename only once the body is complete, so an interrupted download cannot
+    # leave a truncated file that later runs treat as a valid cache hit.
+    tmp.replace(path)
     return path
 
 
@@ -411,6 +493,102 @@ def load_cargo(con: sqlite3.Connection, links: dict[str, str]) -> None:
     log(f"  {len(rows):,} airports, CY{year}")
 
 
+def load_development_need(con: sqlite3.Connection) -> None:
+    """FAA NPIAS Appendix A: five-year eligible development cost per airport.
+
+    Column positions differ from the enplanement workbooks, and the FAA has
+    moved them between editions, so the header row is located and read by name
+    rather than by index.
+    """
+    log("development need (FAA NPIAS)")
+    try:
+        path = download(NPIAS, "npias-appendix-a.xlsx")
+    except Exception as exc:  # noqa: BLE001 - one optional source, not the run
+        log(f"  skipped: {type(exc).__name__}: {exc}")
+        return
+
+    ws = openpyxl.load_workbook(path, read_only=True, data_only=True).active
+    rows_iter = ws.iter_rows(values_only=True)
+    header = None
+    for row in rows_iter:
+        cells = [str(c).strip() if c is not None else "" for c in row]
+        if sum(1 for c in cells if c) >= 4:
+            header = cells
+            break
+    if not header:
+        log("  no header row found")
+        return
+
+    def column(*needles: str) -> int | None:
+        for i, name in enumerate(header):
+            lowered = name.lower()
+            if all(n in lowered for n in needles):
+                return i
+        return None
+
+    i_code = column("locid") or column("loc", "id")
+    i_cost = column("development")
+    if i_code is None or i_cost is None:
+        log(f"  unexpected columns: {[c for c in header if c]}")
+        return
+    i_role, i_svc = column("role"), column("svc")
+    # The header cell wraps across lines in the workbook, so the period is
+    # pulled out of it rather than used as written.
+    label = " ".join(header[i_cost].split())
+    period = label.replace("Development Estimate", "").strip() or "2025-2029"
+
+    rows = []
+    for row in rows_iter:
+        code = row[i_code]
+        cost = row[i_cost]
+        if not code or not isinstance(cost, (int, float)):
+            continue
+        rows.append((
+            str(code).strip().upper(), period, int(cost),
+            row[i_role] if i_role is not None else None,
+            row[i_svc] if i_svc is not None else None,
+        ))
+
+    con.executemany("INSERT OR REPLACE INTO development_need VALUES (?,?,?,?,?)", rows)
+    con.execute(
+        "INSERT OR REPLACE INTO source_meta VALUES (?,?,?,?)",
+        ("faa_npias", NPIAS, date.today().isoformat(), f"NPIAS {period}"),
+    )
+    log(f"  {len(rows):,} airports, {period}")
+
+
+def load_financials(con: sqlite3.Connection) -> None:
+    """FAA Form 127 filings, for airports big enough to appear in a ranking.
+
+    One HTTP request per airport, so this is limited the same way catchment is.
+    Filings run a couple of years behind, so recent years are tried in turn
+    until one returns data.
+    """
+    log("financials (FAA CATS Form 127)")
+    wanted = {row[0] for row in con.execute(
+        "SELECT iata FROM enplanement WHERE enplanements >= ?",
+        (FINANCIALS_MIN_ENPLANEMENTS,),
+    )}
+    for year in CATS_YEARS:
+        rows = cats.fetch_all(year, wanted=wanted, log=log)
+        if rows:
+            break
+    else:
+        log("  no filings found")
+        return
+
+    con.executemany(
+        f"INSERT OR REPLACE INTO financials VALUES ({','.join('?' * (2 + len(cats.FIELDS)))})",
+        [(r["iata"], r["year"], *(r[f] for f in cats.FIELDS)) for r in rows],
+    )
+    con.execute(
+        "INSERT OR REPLACE INTO source_meta VALUES (?,?,?,?)",
+        ("faa_cats", cats.BASE, date.today().isoformat(),
+         f"{len(rows)} airports, FY{year}"),
+    )
+    log(f"  {len(rows)} airports, FY{year}")
+
+
 def _hour(hhmm: str) -> int | None:
     if not hhmm or not hhmm.strip():
         return None
@@ -424,8 +602,16 @@ def load_bts_month(con: sqlite3.Connection, year: int, month: int) -> bool:
     """Aggregate one month of BTS On-Time data into the monthly/hourly tables."""
     url = BTS_ONTIME.format(year=year, month=month)
     name = f"ontime_{year}_{month:02d}.zip"
+    # One archive per calendar month, around 250 MB each, so how long a copy is
+    # kept is decided by the month it covers rather than by when it was
+    # downloaded. BTS revises a month for a while after first publishing it and
+    # then leaves it alone, so recent months are refetched and settled ones are
+    # not, however long they have sat in the cache.
+    today = date.today()
+    months_old = (today.year - year) * 12 + today.month - month
+    max_age = 7 if months_old <= BTS_SETTLES_AFTER_MONTHS else 3650
     try:
-        path = download(url, name)
+        path = download(url, name, max_age_days=max_age)
     except Exception as exc:  # noqa: BLE001 - source availability varies
         log(f"  {year}-{month:02d} unavailable: {exc}")
         return False
@@ -547,7 +733,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--months", type=int, default=12,
                         help="how many months of BTS On-Time data to load")
+    parser.add_argument("--refresh", action="store_true",
+                        help="ignore cached downloads and fetch every source again")
     args = parser.parse_args()
+
+    if args.refresh:
+        global CACHE_MAX_AGE_OVERRIDE
+        CACHE_MAX_AGE_OVERRIDE = 0
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     # SQLite cannot run over SMB: Azure Files does not support the byte-range
@@ -564,6 +756,8 @@ def main() -> int:
     links = faa_links()
     load_enplanements(con, links)
     load_cargo(con, links)
+    load_development_need(con)
+    load_financials(con)
     load_catchment(con)
     con.commit()
 

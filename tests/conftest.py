@@ -30,11 +30,23 @@ def fixture_data(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def require_db():
-    """Skip when the real ETL output is missing. Used by the golden tests."""
+    """Skip when the real ETL output is missing."""
     from app import db
 
     if not db.DB_PATH.exists():
         pytest.skip(f"{db.DB_PATH} not built. Run: python etl/build_db.py")
+
+
+@pytest.fixture(scope="session")
+def require_deployment():
+    """Skip when there is no deployment to test, fail when it is unreachable."""
+    from tests import deployed
+
+    try:
+        deployed.base_url()
+    except deployed.NotDeployed:
+        pytest.skip("AGENT_URL not set. Point it at the deployment to test.")
+    assert deployed.healthy(), f"{deployed.base_url()} is not responding"
 
 
 @pytest.fixture(scope="session")

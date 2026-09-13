@@ -3,6 +3,7 @@ import binascii
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Literal
 
@@ -88,6 +89,7 @@ class ChatResponse(BaseModel):
 
 
 EXPOSE_TRACE = os.environ.get("EXPOSE_TRACE") == "1"
+EVAL_TOKEN = os.environ.get("EVAL_TOKEN", "")
 
 
 class SessionSummary(BaseModel):
@@ -117,6 +119,21 @@ def current_user(request: Request) -> str:
 
 
 def authorised_user(request: Request) -> str:
+    """Identify the caller and refuse anyone outside the allowlist.
+
+    A deployment with EVAL_TOKEN set has no sign-in in front of it, so the
+    token is the only thing standing between it and the open internet. It
+    replaces the allowlist rather than adding to it, because automated runs
+    have no Google identity to present. Production leaves EVAL_TOKEN unset.
+    """
+    if EVAL_TOKEN:
+        header = request.headers.get("authorization", "")
+        offered = header.removeprefix("Bearer ").strip()
+        if not secrets.compare_digest(offered, EVAL_TOKEN):
+            telemetry.event("eval_token_rejected", level=logging.WARNING, status=401)
+            raise HTTPException(status_code=401, detail="Invalid evaluation token")
+        return "evaluation"
+
     user = current_user(request)
     if ALLOWED_USERS and user.lower() not in ALLOWED_USERS:
         telemetry.event("access_denied", level=logging.WARNING, user=user, status=403)

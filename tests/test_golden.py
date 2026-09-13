@@ -1,4 +1,4 @@
-"""The four golden questions, end to end.
+"""The four golden questions, asked of a real deployment.
 
 Each case is checked three ways:
   1. the model called the tool the answer must be grounded in,
@@ -6,13 +6,13 @@ Each case is checked three ways:
   3. a second Gemini call grades the answer against a rubric.
 
 Check 2 is the one that catches hallucination. The judge cannot verify numbers
-because it has no database, so the numbers are matched against the recorded
-tool results directly and only the reasoning is left to the judge.
+because it has no database, so the numbers are matched against the tool trace
+the deployment returns and only the reasoning is left to the judge.
 
-Each question is asked once per module and the three checks share the result,
-which keeps the suite to one API call per case plus one judge call.
-
-These call the API, so they are marked llm and excluded from the default run.
+These run over HTTP against AGENT_URL, so they also prove the deployment is
+wired correctly: the prompt is in the image, the database is mounted, and the
+schema matches the tools. Each question is asked once and the three checks
+share the result.
 """
 
 import re
@@ -20,19 +20,21 @@ import re
 import pytest
 
 from app import agent
+from tests import deployed
 from tests.conftest import GOLDEN
 from tests.judge import grade
 
 pytestmark = [
     pytest.mark.llm,
-    pytest.mark.usefixtures("require_db", "require_model"),
+    pytest.mark.usefixtures("require_deployment", "require_model"),
 ]
 
 CASES = [pytest.param(case, id=case["id"]) for case in GOLDEN]
 
-# Values a model may legitimately state without a tool: the long-haul threshold,
-# years, months, small counts used in prose ("4 runways", "top 5"), and the
-# regulatory constants written into the system prompt.
+# Values a model may legitimately state without a tool: years, months, small
+# counts used in prose ("4 runways", "top 5"), and the regulatory constants
+# written into the system prompt. The prompt is read from the repo, which is
+# what the deployment was built from.
 IGNORE = re.compile(r"^(19|20)\d\d$|^\d{1,2}$")
 FROM_PROMPT = set(re.findall(r"\d[\d,]*\.?\d*", agent.SYSTEM_INSTRUCTION))
 
@@ -95,11 +97,7 @@ def answers():
     """Ask each golden question once and reuse the result across the checks."""
     out = {}
     for case in GOLDEN:
-        trace: list = []
-        text = agent.reply(
-            [{"role": "user", "content": case["question"]}], trace=trace
-        )
-        out[case["id"]] = (text, trace)
+        out[case["id"]] = deployed.ask(case["question"])
     return out
 
 

@@ -26,13 +26,19 @@ def base_url() -> str:
     return url.rstrip("/")
 
 
+def _headers() -> dict:
+    headers = {"Content-Type": "application/json"}
+    token = os.environ.get("AGENT_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def ask(question: str, timeout: int = 120) -> tuple[str, list]:
     """Return the reply and the tool trace for one question."""
     payload = json.dumps({"messages": [{"role": "user", "content": question}]})
     request = urllib.request.Request(
-        f"{base_url()}/api/chat",
-        data=payload.encode(),
-        headers={"Content-Type": "application/json"},
+        f"{base_url()}/api/chat", data=payload.encode(), headers=_headers()
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

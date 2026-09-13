@@ -10,27 +10,6 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# AI tooling scratch
-.snapshots/
-.playwright-mcp/
-
-# Local scratch output
-*.log
-scripts/
-
-# data/airports.db is committed so the repo works on clone without an ETL run.
-# Refresh it with: python etl/build_db.py
-data/*.building
-
-# Local chat history
+# Local chat history. data/airports.db is committed on purpose, so the repo
+# answers questions on clone; rebuild it with: python etl/build_db.py
 data/sessions.db*
-
-# Editor
-.vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Removed from the submission, kept locally
-cleaned/

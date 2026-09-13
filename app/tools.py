@@ -267,8 +267,11 @@ def rank_expansion_candidates(
     normalised = {k: _normalise(v) for k, v in metrics.items()}
 
     for i, row in enumerate(scored):
-        row["components"] = {k: round(normalised[k][i], 1) for k in WEIGHTS}
-        row["score"] = round(sum(WEIGHTS[k] * normalised[k][i] for k in WEIGHTS), 1)
+        # Score from the published components, not the raw ones, so an analyst
+        # can reproduce the total from the figures shown.
+        components = {k: round(normalised[k][i], 1) for k in WEIGHTS}
+        row["components"] = components
+        row["score"] = round(sum(WEIGHTS[k] * components[k] for k in WEIGHTS), 1)
 
     scored.sort(key=lambda r: r["score"], reverse=True)
     dropped = [{"iata": r["iata"], "name": r["name"]} for r in rows if r not in scored]

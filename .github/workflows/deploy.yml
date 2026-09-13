@@ -36,9 +36,9 @@ jobs:
           python-version: '3.13'
           cache: pip
       - run: pip install -q -r requirements.txt -r requirements-dev.txt
-      # Scoring and query checks only. The golden questions call the Gemini
-      # API and need a built database, so they are run locally before a
-      # prompt or tool change ships.
+      # Scoring and query checks, run against a fixture database so they need
+      # no ETL output and no API key. The golden questions call Gemini and are
+      # run locally before a prompt or tool change ships.
       - run: pytest
 
   changes:

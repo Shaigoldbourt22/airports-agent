@@ -10,7 +10,8 @@
   rubric: |
     - Names one airport as the leading candidate and gives its score.
     - Explains the score: names the weighted components (growth, enplanements
-      per runway, peak-hour departures per runway) and why the leader wins.
+      per runway, peak-hour departures per runway, runway spacing) and why the
+      leader wins.
     - States that scores are relative to the peer group, not national.
     - Covers several New England airports, not just one.
     - Does not claim a gate count for any airport.

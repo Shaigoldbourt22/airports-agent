@@ -20,7 +20,6 @@
       </button>
       <img id="logo" src="/static/logo.svg" alt="" width="26" height="26" />
       <h1>Airport Investment Intelligence</h1>
-      <span class="badge">Preview</span>
       <div class="account" hidden>
         <span id="user-email"></span>
         <a href="/.auth/logout?post_logout_redirect_uri=/">Sign out</a>
@@ -33,6 +32,7 @@
       <div class="chips">
         <button type="button" class="chip">Which airports in New England are strong candidates for terminal expansion?</button>
         <button type="button" class="chip">Compare LA and Santa Ana airport congestion levels.</button>
+        <button type="button" class="chip">What is the percentage of long haul flights out of Anchorage airport?</button>
         <button type="button" class="chip">What is the unmet flight demand at SFO and why?</button>
       </div>
     </section>
@@ -57,11 +57,11 @@
           </button>
         </div>
       </div>
-      <p class="hint">Data sources and scoring are not wired up yet. Verify any figures.</p>
+      <p class="hint">Figures come from FAA and BTS data. Gate counts are unpublished, so terminal capacity is approximated.</p>
     </div>
   </form>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>

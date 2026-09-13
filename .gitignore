@@ -18,8 +18,8 @@ venv/
 *.log
 scripts/
 
-# Built artefact — rebuild with: python etl/build_db.py
-data/airports.db
+# data/airports.db is committed so the repo works on clone without an ETL run.
+# Refresh it with: python etl/build_db.py
 data/*.building
 
 # Local chat history
@@ -31,3 +31,6 @@ data/sessions.db*
 # OS
 .DS_Store
 Thumbs.db
+
+# Removed from the submission, kept locally
+cleaned/

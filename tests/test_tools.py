@@ -23,13 +23,23 @@ def test_weights_sum_to_one():
 
 
 def test_ranking_is_stable_and_correct():
-    """BIG wins: it is flat, but carries by far the heaviest load per runway."""
+    """BIG wins: flat, but the heaviest load per runway and parallels 800 ft apart."""
     ranked = tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]
     assert [row["iata"] for row in ranked] == ["BIG", "GRW", "FLT", "TNY", "CGO"]
     assert ranked[0]["components"] == {
-        "growth": 0.0, "enpl_per_runway": 100.0, "peak_per_runway": 100.0
+        "growth": 0.0, "enpl_per_runway": 100.0,
+        "peak_per_runway": 100.0, "spacing": 100.0,
     }
-    assert ranked[0]["score"] == 60.0
+    assert ranked[0]["score"] == 65.0
+
+
+def test_spacing_follows_the_faa_thresholds():
+    """Parallels under 1,200 ft are worked as one runway; under 2,500 ft lose
+    independent approaches. Airports without parallels are not constrained."""
+    assert tools._spacing_penalty(800) == 100.0
+    assert tools._spacing_penalty(2000) == 60.0
+    assert tools._spacing_penalty(4300) == 0.0
+    assert tools._spacing_penalty(None) == 0.0
 
 
 def test_scoring_is_reproducible():

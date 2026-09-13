@@ -11,13 +11,37 @@ from app import db
 
 LONGHAUL_MI = 3000
 
+# FAA separation rules for parallel runways. Under 2,500 ft apart an airport
+# cannot run independent approaches in poor visibility; under 1,200 ft the
+# parallels are worked as a single runway. Both cost arrival capacity exactly
+# when demand peaks, so spacing is a structural constraint, not a detail.
+INDEPENDENT_APPROACH_FT = 2500
+SINGLE_RUNWAY_FT = 1200
+
 # Terminal-expansion score. Weights are fixed and sum to 1.
 #   growth          rising demand is the reason to build
 #   enpl_per_runway passengers carried per physical movement slot
 #   peak_per_runway how crowded the single busiest hour already is
+#   spacing         whether runway geometry caps arrivals in bad weather
 # Gate counts would be the ideal denominator, but no federal dataset publishes
 # them, so runways stand in as the capacity measure.
-WEIGHTS = {"growth": 0.40, "enpl_per_runway": 0.35, "peak_per_runway": 0.25}
+WEIGHTS = {"growth": 0.35, "enpl_per_runway": 0.30,
+           "peak_per_runway": 0.20, "spacing": 0.15}
+
+
+def _spacing_penalty(parallel_ft: int | None) -> float:
+    """0-100 by how much parallel spacing limits arrivals in poor visibility.
+
+    No parallels means spacing is not the binding constraint, so it scores 0
+    rather than being treated as missing data.
+    """
+    if not parallel_ft:
+        return 0.0
+    if parallel_ft < SINGLE_RUNWAY_FT:
+        return 100.0
+    if parallel_ft < INDEPENDENT_APPROACH_FT:
+        return 60.0
+    return 0.0
 
 
 def _normalise(values: list[float]) -> list[float]:
@@ -243,7 +267,7 @@ def rank_expansion_candidates(
 
     rows = db.query(
         f"""
-        SELECT a.iata, a.name, a.state, a.runway_count,
+        SELECT a.iata, a.name, a.state, a.runway_count, a.parallel_ft,
                e.enplanements, e.pct_change,
                (SELECT MAX(peak_sched_dep) FROM airport_hour h WHERE h.iata = a.iata)
                    AS peak_sched_dep
@@ -265,6 +289,9 @@ def rank_expansion_candidates(
         "peak_per_runway": [r["peak_sched_dep"] / r["runway_count"] for r in scored],
     }
     normalised = {k: _normalise(v) for k, v in metrics.items()}
+    # Spacing is already 0-100 on a published rule, so normalising it would make
+    # the worst airport in a set of mildly constrained ones look critical.
+    normalised["spacing"] = [_spacing_penalty(r["parallel_ft"]) for r in scored]
 
     for i, row in enumerate(scored):
         # Score from the published components, not the raw ones, so an analyst

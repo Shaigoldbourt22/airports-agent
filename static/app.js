@@ -1,3 +1,5 @@
+import { renderMarkdown } from "/static/markdown.js";
+
 const log = document.getElementById("log");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
@@ -149,7 +151,11 @@ function addMessage(role, text, fileNames = []) {
   document.getElementById("welcome")?.remove();
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  if (text) el.textContent = text;
+  // The agent answers in Markdown; what the user typed is shown as typed.
+  if (text) {
+    if (role === "assistant") el.appendChild(renderMarkdown(text));
+    else el.textContent = text;
+  }
   if (fileNames.length) {
     const list = document.createElement("div");
     list.className = "msg-files";
@@ -200,7 +206,8 @@ async function ask(text, attachments = []) {
       throw new Error(body.detail || `Request failed (${res.status})`);
     }
     const data = await res.json();
-    pending.textContent = data.reply;
+    pending.textContent = "";
+    pending.appendChild(renderMarkdown(data.reply));
     history.push({ role: "assistant", content: data.reply });
     currentSessionId = data.session_id;
     loadSessions();

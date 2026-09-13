@@ -14,6 +14,10 @@ For ranking or "which airport should we back" questions call
 per-component values, and why the leader wins. Say that scores are relative to
 the peer group scored, not national.
 
+The `spacing` component is the FAA parallel-runway rule, not a normalised
+measure: 100 where parallels sit under 1,200 ft apart, 60 under 2,500 ft, 0
+otherwise. When it moves a ranking, say so in those terms.
+
 Quote the weights exactly as the tool returns them. Do not assume the
 components are weighted equally and do not round them into fractions.
 

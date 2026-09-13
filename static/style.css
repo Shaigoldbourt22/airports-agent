@@ -231,7 +231,6 @@ header h1 {
 }
 
 .msg {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   animation: fade 0.2s ease-out;
 }
@@ -247,10 +246,80 @@ header h1 {
   padding: 11px 18px;
   border-radius: 20px;
   background: var(--bubble);
+  /* Line breaks the user typed are preserved; the assistant's reply is
+     rendered from Markdown into real blocks instead. */
+  white-space: pre-wrap;
 }
 
 .msg.assistant {
   padding: 0;
+  line-height: 1.55;
+}
+
+.msg.assistant > :first-child { margin-top: 0; }
+.msg.assistant > :last-child { margin-bottom: 0; }
+
+.msg.assistant p {
+  margin: 0 0 12px;
+}
+
+.msg.assistant h3,
+.msg.assistant h4,
+.msg.assistant h5 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.msg.assistant ul,
+.msg.assistant ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.msg.assistant li {
+  margin-bottom: 4px;
+}
+
+.msg.assistant code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 0.9em;
+}
+
+/* Tables carry the comparisons, so they scroll rather than squeeze. */
+.msg.assistant table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 14px;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.msg.assistant th,
+.msg.assistant td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.msg.assistant th {
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--text);
+}
+
+.msg.assistant td.num {
+  text-align: right;
+}
+
+.msg.assistant tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .msg.error {
@@ -259,6 +328,7 @@ header h1 {
   border: 1px solid #f0b4b4;
   background: #fdf0f0;
   color: #9b2222;
+  white-space: pre-wrap;
 }
 
 .dots {

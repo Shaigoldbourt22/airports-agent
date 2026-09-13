@@ -7,6 +7,8 @@ deterministic tool, never from the model.
 **Try it:** [airports-agent.victoriousgrass-4e3f5a75.eastus.azurecontainerapps.io](https://airports-agent.victoriousgrass-4e3f5a75.eastus.azurecontainerapps.io)
 — sign in with Google. Access is by allowlist; ask me to add your address.
 
+**Source:** [github.com/Shaigoldbourt22/airports-agent](https://github.com/Shaigoldbourt22/airports-agent)
+
 Design and scoring methodology: [docs/DESIGN.md](docs/DESIGN.md).
 Data sources and known gaps: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
 

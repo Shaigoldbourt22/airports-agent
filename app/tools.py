@@ -19,14 +19,23 @@ INDEPENDENT_APPROACH_FT = 2500
 SINGLE_RUNWAY_FT = 1200
 
 # Terminal-expansion score. Weights are fixed and sum to 1.
-#   growth          rising demand is the reason to build
-#   enpl_per_runway passengers carried per physical movement slot
-#   peak_per_runway how crowded the single busiest hour already is
-#   spacing         whether runway geometry caps arrivals in bad weather
-# Gate counts would be the ideal denominator, but no federal dataset publishes
-# them, so runways stand in as the capacity measure.
-WEIGHTS = {"growth": 0.35, "enpl_per_runway": 0.30,
-           "peak_per_runway": 0.20, "spacing": 0.15}
+#   load       how hard the existing runways are already worked
+#   growth     rising airline demand is the reason to build
+#   catchment  whether the metro the terminal would serve is growing
+#   spacing    whether runway geometry caps arrivals in bad weather
+#
+# Load is one factor, not two. Enplanements per runway and peak departures per
+# runway correlate at r=0.92 nationally, so scoring them separately put 0.50 of
+# the weight on a single underlying measurement while presenting it as two
+# independent signals. They are averaged into one component instead.
+#
+# Catchment growth is the only component that does not move with the others
+# (r = -0.65 to +0.20 against them). It is what separates an airline adding a
+# seasonal route from a metro that will still need the terminal in 2050.
+#
+# Gate counts would be the ideal capacity denominator, but no federal dataset
+# publishes them, so runways stand in.
+WEIGHTS = {"load": 0.35, "growth": 0.25, "catchment": 0.25, "spacing": 0.15}
 
 
 def _spacing_penalty(parallel_ft: int | None) -> float:
@@ -42,6 +51,20 @@ def _spacing_penalty(parallel_ft: int | None) -> float:
     if parallel_ft < INDEPENDENT_APPROACH_FT:
         return 60.0
     return 0.0
+
+
+def _missing_inputs(row: dict) -> list[str]:
+    """Which score inputs an airport lacks, named so an answer can say so."""
+    missing = []
+    if not row["runway_count"]:
+        missing.append("runway count")
+    if not row["peak_sched_dep"]:
+        missing.append("peak-hour flight data")
+    if row["pct_change"] is None:
+        missing.append("enplanement growth")
+    if row["pop_growth"] is None:
+        missing.append("metro population growth")
+    return missing
 
 
 def _normalise(values: list[float]) -> list[float]:
@@ -269,26 +292,37 @@ def rank_expansion_candidates(
         f"""
         SELECT a.iata, a.name, a.state, a.runway_count, a.parallel_ft,
                e.enplanements, e.pct_change,
+               c.metro, c.pop_growth, c.population,
                (SELECT MAX(peak_sched_dep) FROM airport_hour h WHERE h.iata = a.iata)
                    AS peak_sched_dep
         FROM airport a JOIN enplanement e ON e.iata = a.iata
+        LEFT JOIN catchment c ON c.iata = a.iata
         WHERE {' AND '.join(where)}
         """,
         tuple(params),
     )
     scored = [r for r in rows if r["runway_count"] and r["peak_sched_dep"]
-              and r["pct_change"] is not None]
+              and r["pct_change"] is not None and r["pop_growth"] is not None]
     if not scored:
-        return {"ranked": [], "excluded": rows,
-                "note": "No airport in this set has the growth, runway and "
-                        "peak-hour data the score requires."}
+        return {
+            "ranked": [],
+            "unscored_missing_data": [
+                {"iata": r["iata"], "name": r["name"],
+                 "missing": _missing_inputs(r)} for r in rows
+            ],
+            "note": "No airport in this set has all four inputs the score needs.",
+        }
 
-    metrics = {
-        "growth": [r["pct_change"] for r in scored],
-        "enpl_per_runway": [r["enplanements"] / r["runway_count"] for r in scored],
-        "peak_per_runway": [r["peak_sched_dep"] / r["runway_count"] for r in scored],
+    # Both per-runway measures describe the same thing, so they are averaged
+    # before normalising rather than scored as separate components.
+    load = [((r["enplanements"] / r["runway_count"]) / 100_000
+             + r["peak_sched_dep"] / r["runway_count"]) / 2 for r in scored]
+
+    normalised = {
+        "load": _normalise(load),
+        "growth": _normalise([r["pct_change"] for r in scored]),
+        "catchment": _normalise([r["pop_growth"] for r in scored]),
     }
-    normalised = {k: _normalise(v) for k, v in metrics.items()}
     # Spacing is already 0-100 on a published rule, so normalising it would make
     # the worst airport in a set of mildly constrained ones look critical.
     normalised["spacing"] = [_spacing_penalty(r["parallel_ft"]) for r in scored]
@@ -301,12 +335,18 @@ def rank_expansion_candidates(
         row["score"] = round(sum(WEIGHTS[k] * components[k] for k in WEIGHTS), 1)
 
     scored.sort(key=lambda r: r["score"], reverse=True)
-    dropped = [{"iata": r["iata"], "name": r["name"]} for r in rows if r not in scored]
+    dropped = [
+        {"iata": r["iata"], "name": r["name"], "state": r["state"],
+         "enplanements": r["enplanements"], "missing": _missing_inputs(r)}
+        for r in rows if r not in scored
+    ]
     return {
         "ranked": scored[:limit],
         "weights": WEIGHTS,
         "unscored_missing_data": dropped or None,
-        "note": "Scores are relative to the airports in this list only.",
+        "note": "Scores are relative to the airports in this list only. Any "
+                "airport under unscored_missing_data must be named in the "
+                "answer, with what it is missing.",
     }
 
 

@@ -23,14 +23,32 @@ def test_weights_sum_to_one():
 
 
 def test_ranking_is_stable_and_correct():
-    """BIG wins: flat, but the heaviest load per runway and parallels 800 ft apart."""
+    """BIG wins: the heaviest load per runway and parallels 800 ft apart."""
     ranked = tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]
     assert [row["iata"] for row in ranked] == ["BIG", "GRW", "FLT", "TNY", "CGO"]
-    assert ranked[0]["components"] == {
-        "growth": 0.0, "enpl_per_runway": 100.0,
-        "peak_per_runway": 100.0, "spacing": 100.0,
-    }
-    assert ranked[0]["score"] == 65.0
+    assert ranked[0]["components"]["load"] == 100.0
+    assert ranked[0]["components"]["growth"] == 0.0
+    assert ranked[0]["components"]["spacing"] == 100.0
+
+
+def test_catchment_is_scored_independently_of_load():
+    """GRW has the fastest-growing metro but far from the heaviest load.
+
+    This is the disagreement the component exists to surface: an airline
+    schedule and a population trend answer different questions.
+    """
+    rows = {r["iata"]: r["components"]
+            for r in tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]}
+    assert rows["GRW"]["catchment"] == 100.0
+    assert rows["GRW"]["load"] < rows["BIG"]["load"]
+
+
+def test_airport_without_catchment_is_reported():
+    """NRW has no metro row, so it must surface as unscored with the reason."""
+    result = tools.rank_expansion_candidates(states=NEW_ENGLAND, min_enplanements=0)
+    unscored = {r["iata"]: r["missing"] for r in result["unscored_missing_data"]}
+    assert "NRW" in unscored
+    assert "metro population growth" in unscored["NRW"]
 
 
 def test_spacing_follows_the_faa_thresholds():

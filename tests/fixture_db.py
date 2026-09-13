@@ -89,11 +89,25 @@ ROUTE_MONTH = [
     ("GRW", "NEA", 2026, 6, 2_000, 350),
 ]
 
+# iata, cbsa, metro, population, prev_pop, pop_growth, years
+# GRW sits in the fastest-growing metro but is not the busiest airport, which
+# is the disagreement between airline demand and catchment demand that the
+# score exists to surface. NRW has no row: an airport can be missing catchment
+# data as easily as runway data, and must be reported either way.
+CATCHMENT = [
+    ("BIG", "10001", "Bigtown Metro Area", 5_000_000, 4_950_000, 0.0101, "2018-2023"),
+    ("GRW", "10002", "Growville Metro Area", 1_200_000, 1_100_000, 0.0909, "2018-2023"),
+    ("FLT", "10003", "Flatton Metro Area", 900_000, 900_000, 0.0, "2018-2023"),
+    ("TNY", "10004", "Tinyville Metro Area", 200_000, 205_000, -0.0244, "2018-2023"),
+    ("CGO", "10005", "Freightburg Metro Area", 300_000, 295_000, 0.0169, "2018-2023"),
+]
+
 SOURCE_META = [
     ("ourairports", "https://example.test/airports", "2026-01-01", "6 test airports"),
     ("faa_enplanements", "https://example.test/enplanements", "2026-01-01", "CY2025"),
     ("faa_cargo", "https://example.test/cargo", "2026-01-01", "CY2025"),
     ("bts_ontime", "https://example.test/ontime", "2026-01-01", "2 months"),
+    ("census_acs", "https://example.test/acs", "2026-01-01", "5 airports, ACS 2018-2023"),
 ]
 
 
@@ -111,6 +125,7 @@ def build(path: Path) -> Path:
         "INSERT INTO airport_hour VALUES (?,?,?,?,?,?,?,?,?,?,?)", AIRPORT_HOUR
     )
     con.executemany("INSERT INTO route_month VALUES (?,?,?,?,?,?)", ROUTE_MONTH)
+    con.executemany("INSERT INTO catchment VALUES (?,?,?,?,?,?,?)", CATCHMENT)
     con.executemany("INSERT INTO source_meta VALUES (?,?,?,?)", SOURCE_META)
     con.commit()
     con.close()

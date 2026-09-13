@@ -9,11 +9,11 @@
   must_call: [rank_expansion_candidates]
   rubric: |
     - Names one airport as the leading candidate and gives its score.
-    - Explains the score: names the weighted components (growth, enplanements
-      per runway, peak-hour departures per runway, runway spacing) and why the
-      leader wins.
+    - Explains the score: names the weighted components (load, enplanement
+      growth, metro catchment growth, runway spacing) and why the leader wins.
     - States that scores are relative to the peer group, not national.
     - Covers several New England airports, not just one.
+    - Names any airport that could not be scored, and what data it lacks.
     - Does not claim a gate count for any airport.
 
 - id: lax_vs_sna

@@ -34,6 +34,11 @@ from pathlib import Path
 
 import openpyxl
 
+# Runs as a script inside the ETL container, so the sibling module is imported
+# by path rather than as a package.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import census  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("DB_DIR", ROOT / "data")) / "airports.db"
 CACHE = Path(os.environ.get("TEMP", tempfile.gettempdir())) / "airports_etl"
@@ -134,6 +139,21 @@ CREATE TABLE route_month (
     PRIMARY KEY (origin, dest, year, month)
 );
 
+-- The metro area an airport draws on, and how fast it is growing. Runway
+-- counts describe capacity today; this describes the demand a terminal built
+-- now would serve. Population level is deliberately absent: it tracks
+-- enplanements per runway almost exactly, so it would add weight to the score
+-- without adding information.
+CREATE TABLE catchment (
+    iata          TEXT PRIMARY KEY,
+    cbsa          TEXT NOT NULL,
+    metro         TEXT NOT NULL,
+    population    INTEGER NOT NULL,
+    prev_pop      INTEGER NOT NULL,
+    pop_growth    REAL NOT NULL,
+    years         TEXT NOT NULL
+);
+
 CREATE TABLE source_meta (
     source        TEXT PRIMARY KEY,
     url           TEXT NOT NULL,
@@ -149,6 +169,10 @@ CREATE INDEX idx_airport_state ON airport(state);
 """
 
 LONGHAUL_MI = 3000
+
+# Geocoding costs one request per airport, so only airports large enough to
+# appear in a ranking are looked up.
+CATCHMENT_MIN_ENPLANEMENTS = 250_000
 
 
 def log(msg: str) -> None:
@@ -261,6 +285,58 @@ def load_airports(con: sqlite3.Connection) -> set[str]:
     )
     log(f"  {len(rows):,} US airports")
     return {r[0] for r in rows}
+
+
+def load_catchment(con: sqlite3.Connection) -> None:
+    """Metro population growth for airports that carry meaningful traffic.
+
+    Only airports above the enplanement floor are geocoded: the geocoder is one
+    request per airport, and an airport too small to rank is not worth the call.
+    A missing key or an unreachable API leaves the table empty rather than
+    failing the build, because every other answer still works without it.
+    """
+    log("catchment (Census ACS)")
+    try:
+        current = census.metro_population(census.CURRENT_YEAR)
+        baseline = census.metro_population(census.BASELINE_YEAR)
+    except census.CensusUnavailable as exc:
+        log(f"  skipped: {exc}")
+        return
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        log(f"  skipped, Census unreachable: {type(exc).__name__}: {exc}")
+        return
+
+    airports = con.execute(
+        "SELECT a.iata, a.latitude, a.longitude FROM airport a "
+        "JOIN enplanement e ON e.iata = a.iata "
+        "WHERE e.enplanements >= ? AND a.latitude IS NOT NULL",
+        (CATCHMENT_MIN_ENPLANEMENTS,),
+    ).fetchall()
+
+    years = f"{census.BASELINE_YEAR}-{census.CURRENT_YEAR}"
+    rows, redefined = [], 0
+    for iata, latitude, longitude in airports:
+        cbsa, metro = census.locate(latitude, longitude)
+        if not cbsa:
+            continue
+        change = census.growth(current, baseline, cbsa)
+        if change is None:
+            redefined += 1
+            continue
+        name, population = current[cbsa]
+        _, previous = baseline[cbsa]
+        rows.append((iata, cbsa, metro or name, population, previous, change, years))
+
+    con.executemany("INSERT OR REPLACE INTO catchment VALUES (?,?,?,?,?,?,?)", rows)
+    con.execute(
+        "INSERT OR REPLACE INTO source_meta VALUES (?,?,?,?)",
+        ("census_acs", census.ACS.format(year=census.CURRENT_YEAR),
+         date.today().isoformat(),
+         f"{len(rows)} airports, ACS {years}"),
+    )
+    log(f"  {len(rows):,} airports matched to metro areas")
+    if redefined:
+        log(f"  {redefined} skipped: metro boundary changed since {census.BASELINE_YEAR}")
 
 
 def faa_links() -> dict[str, str]:
@@ -488,6 +564,7 @@ def main() -> int:
     links = faa_links()
     load_enplanements(con, links)
     load_cargo(con, links)
+    load_catchment(con)
     con.commit()
 
     log(f"BTS On-Time ({args.months} months)")

@@ -21,6 +21,14 @@ otherwise. When it moves a ranking, say so in those terms.
 Quote the weights exactly as the tool returns them. Do not assume the
 components are weighted equally and do not round them into fractions.
 
+Every airport in `unscored_missing_data` must be named, with what it is
+missing. An airport dropped for want of data may be the most interesting one
+in the region, and an analyst cannot chase what they are not told about.
+
+The `catchment` component is five-year metro population growth, which answers a
+different question from `growth`: airline schedules move year to year, but a
+terminal has to serve the metro for decades. When the two disagree, say so.
+
 ## Chosen thresholds
 
 Some cutoffs are ours, not industry standards. "Long haul" is the clearest

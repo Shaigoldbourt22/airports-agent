@@ -25,14 +25,30 @@ and sum to 1:
 
 | Component | Weight | Why |
 |---|---|---|
-| `growth` | 0.35 | Rising demand is the reason to build at all |
-| `enpl_per_runway` | 0.30 | Passengers carried per physical movement slot |
-| `peak_per_runway` | 0.20 | How crowded the single busiest hour already is |
+| `load` | 0.35 | How hard the existing runways are already worked |
+| `growth` | 0.25 | Rising airline demand is the reason to build at all |
+| `catchment` | 0.25 | Whether the metro the terminal would serve is growing |
 | `spacing` | 0.15 | Whether runway geometry caps arrivals in poor weather |
 
-The first three are min-max normalised to 0-100 **within the candidate set**, so
-a score is relative to the peers being compared, not a national rating. Ask for
-New England and the leader scores against New England.
+`load` averages enplanements per runway and peak departures per runway. They
+were separate components until measurement showed they correlate at **r = 0.92**
+nationally: the score was putting half its weight on one underlying quantity
+while presenting it as two independent signals. Collapsing them left room for a
+factor that genuinely differs, and the remaining components now correlate no
+higher than 0.38.
+
+`catchment` is five-year metro population growth from the Census ACS, matched to
+the airport by coordinates through the Census geocoder. It answers a different
+question from `growth`: an airline schedule changes yearly, but a terminal has
+to serve its metro for decades, and the two disagree usefully. Bangor's
+enplanements rose 16% in a metro growing 2.8%; Portland's rose 5% in a metro
+growing 5.8%. Metro *population* was tested and rejected — it tracks
+enplanements per runway at r = 0.99, so it would have added weight without
+adding information.
+
+`load`, `growth` and `catchment` are min-max normalised to 0-100 **within the
+candidate set**, so a score is relative to the peers being compared, not a
+national rating. Ask for New England and the leader scores against New England.
 
 `spacing` is the exception: it is scored on the FAA separation rule rather than
 normalised. Parallels under 1,200 ft apart are worked as a single runway and
@@ -41,6 +57,11 @@ visibility and score 60; anything else scores 0. Normalising it would make the
 worst airport in a set of mildly constrained ones look critical. This is the one
 component that measures a constraint no amount of spending inside the fence can
 fix.
+
+An airport missing any input is never silently dropped. It is returned under
+`unscored_missing_data` with the specific input it lacks, and the prompt
+requires the answer to name it: the airport that cannot be scored is often the
+one worth investigating.
 
 Airports below 250,000 annual enplanements are excluded; below that the
 percentage swings are noise rather than signal.

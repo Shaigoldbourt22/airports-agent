@@ -36,11 +36,23 @@ CASES = [pytest.param(case, id=case["id"]) for case in GOLDEN]
 # written into the system prompt. The prompt is read from the repo, which is
 # what the deployment was built from.
 IGNORE = re.compile(r"^(19|20)\d\d$|^\d{1,2}$")
-FROM_PROMPT = set(re.findall(r"\d[\d,]*\.?\d*", agent.SYSTEM_INSTRUCTION))
 
 
 def _clean(number: str) -> str:
-    return number.strip(" .,")
+    """Normalise a written number so the same value compares equal everywhere.
+
+    Grouping commas and trailing decimal zeros are presentation. A model
+    writing 0.02790 and a tool returning 0.0279 are making the same claim, and
+    treating them as different figures reports a grounded number as invented.
+    """
+    text = number.strip(" .,").replace(",", "")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+FROM_PROMPT = {_clean(n) for n in
+               re.findall(r"\d[\d,]*\.?\d*", agent.SYSTEM_INSTRUCTION)}
 
 
 def _numbers(text: str) -> set[str]:
@@ -64,7 +76,10 @@ def _tool_numbers(payload) -> set[str]:
         if float(number).is_integer():
             whole = int(number)
             out.update({str(whole), f"{whole:,}"})
-        for places in (1, 2, 3, 4):
+        # Growth rates are stored as small fractions, so a figure a reader sees
+        # as "0.89%" starts life as 0.008980. Rounding has to reach far enough
+        # down to meet it, or a correctly quoted number looks invented.
+        for places in range(1, 7):
             out.add(str(round(number, places)))
             out.add(f"{round(number, places):,}")
 

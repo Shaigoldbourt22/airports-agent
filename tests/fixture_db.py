@@ -89,17 +89,46 @@ ROUTE_MONTH = [
     ("GRW", "NEA", 2026, 6, 2_000, 350),
 ]
 
-# iata, cbsa, metro, population, prev_pop, pop_growth, years
+# iata, cbsa, metro, population, prev_pop, pop_growth (percent), years
 # GRW sits in the fastest-growing metro but is not the busiest airport, which
 # is the disagreement between airline demand and catchment demand that the
 # score exists to surface. NRW has no row: an airport can be missing catchment
 # data as easily as runway data, and must be reported either way.
 CATCHMENT = [
-    ("BIG", "10001", "Bigtown Metro Area", 5_000_000, 4_950_000, 0.0101, "2018-2023"),
-    ("GRW", "10002", "Growville Metro Area", 1_200_000, 1_100_000, 0.0909, "2018-2023"),
+    ("BIG", "10001", "Bigtown Metro Area", 5_000_000, 4_950_000, 1.01, "2018-2023"),
+    ("GRW", "10002", "Growville Metro Area", 1_200_000, 1_100_000, 9.09, "2018-2023"),
     ("FLT", "10003", "Flatton Metro Area", 900_000, 900_000, 0.0, "2018-2023"),
-    ("TNY", "10004", "Tinyville Metro Area", 200_000, 205_000, -0.0244, "2018-2023"),
-    ("CGO", "10005", "Freightburg Metro Area", 300_000, 295_000, 0.0169, "2018-2023"),
+    ("TNY", "10004", "Tinyville Metro Area", 200_000, 205_000, -2.44, "2018-2023"),
+    ("CGO", "10005", "Freightburg Metro Area", 300_000, 295_000, 1.69, "2018-2023"),
+]
+
+# iata, period, estimate_usd, role, service_level
+# TNY needs the most capital per passenger it serves and BIG the least, which
+# is the point of the ratio: the largest airport is not the most expensive one
+# to serve. GRW has no row, because the FAA plan does not cover every airport
+# and a missing cost must not be read as a cost of zero.
+DEVELOPMENT_NEED = [
+    ("BIG", "2025-2029", 400_000_000, "Large Hub", "P"),
+    ("FLT", "2025-2029", 60_000_000, "Small Hub", "P"),
+    ("TNY", "2025-2029", 30_000_000, "Nonhub", "P"),
+    ("CGO", "2025-2029", 45_000_000, "Nonhub", "P"),
+]
+
+# iata, year, aeronautical, food, retail, parking, non_aero, revenue,
+# expenses, income, capex_terminal, capex_total, debt
+# BIG earns far more in total than FLT but less per passenger, which is the
+# case the ratio exists to find: a busy airport not selling to the traffic it
+# already has. TNY has no filing, and a missing one must read as unknown.
+FINANCIALS = [
+    ("BIG", 2024, 300_000_000, 20_000_000, 15_000_000, 60_000_000,
+     100_000_000, 400_000_000, 340_000_000, 60_000_000,
+     50_000_000, 90_000_000, 1_200_000_000),
+    ("FLT", 2024, 40_000_000, 9_000_000, 6_000_000, 15_000_000,
+     30_000_000, 70_000_000, 63_000_000, 7_000_000,
+     8_000_000, 12_000_000, 150_000_000),
+    ("GRW", 2024, 25_000_000, 4_000_000, 3_000_000, 8_000_000,
+     15_000_000, 40_000_000, 35_000_000, 5_000_000,
+     6_000_000, 9_000_000, 80_000_000),
 ]
 
 SOURCE_META = [
@@ -108,6 +137,8 @@ SOURCE_META = [
     ("faa_cargo", "https://example.test/cargo", "2026-01-01", "CY2025"),
     ("bts_ontime", "https://example.test/ontime", "2026-01-01", "2 months"),
     ("census_acs", "https://example.test/acs", "2026-01-01", "5 airports, ACS 2018-2023"),
+    ("faa_npias", "https://example.test/npias", "2026-01-01", "NPIAS 2025-2029"),
+    ("faa_cats", "https://example.test/cats", "2026-01-01", "3 airports, FY2024"),
 ]
 
 
@@ -126,6 +157,10 @@ def build(path: Path) -> Path:
     )
     con.executemany("INSERT INTO route_month VALUES (?,?,?,?,?,?)", ROUTE_MONTH)
     con.executemany("INSERT INTO catchment VALUES (?,?,?,?,?,?,?)", CATCHMENT)
+    con.executemany("INSERT INTO development_need VALUES (?,?,?,?,?)", DEVELOPMENT_NEED)
+    con.executemany(
+        "INSERT INTO financials VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", FINANCIALS
+    )
     con.executemany("INSERT INTO source_meta VALUES (?,?,?,?)", SOURCE_META)
     con.commit()
     con.close()

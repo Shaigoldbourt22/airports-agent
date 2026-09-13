@@ -43,8 +43,6 @@ body {
   background: #f4f4f4;
 }
 
-#sidebar[hidden] { display: none; }
-
 #new-chat {
   padding: 10px 14px;
   margin-bottom: 8px;
@@ -100,17 +98,6 @@ body {
 
 .session:hover .session-delete { opacity: 1; }
 .session-delete:hover { background: var(--bg-hover); color: var(--text); }
-
-#toggle-sidebar {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  color: var(--muted);
-}
-
-#toggle-sidebar:hover { background: var(--bg-elev); color: var(--text); }
 
 button {
   border: 0;
@@ -462,14 +449,6 @@ textarea::placeholder { color: var(--muted); }
   color: #fff;
 }
 
-.hint {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-}
-
 @media (max-width: 640px) {
   header, #log, #composer { padding-inline: 12px; }
-  #sidebar { position: fixed; inset: 0 auto 0 0; z-index: 10; }
 }

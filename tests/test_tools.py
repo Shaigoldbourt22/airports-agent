@@ -20,15 +20,29 @@ NEW_ENGLAND = ["MA", "RI", "CT", "NH", "VT", "ME"]
 
 def test_weights_sum_to_one():
     assert round(sum(tools.WEIGHTS.values()), 6) == 1.0
+    assert round(sum(tools.AIRFIELD_WEIGHTS.values()), 6) == 1.0
+
+
+def test_airfield_pressure_is_reported_but_not_ranked():
+    """BIG is the most pressed airfield and the weakest terminal case.
+
+    It must not lead a terminal ranking on runway pressure: gates cannot add
+    flights at an airport whose runways already cap it. The pressure has to
+    reach the answer all the same, flagged rather than scored.
+    """
+    rows = {r["iata"]: r
+            for r in tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]}
+    assert rows["BIG"]["components"]["load"] == 100.0
+    assert rows["BIG"]["components"]["spacing"] == 100.0
+    assert rows["BIG"]["airfield_constrained"] is True
+    assert rows["BIG"]["score"] < max(r["score"] for r in rows.values())
 
 
 def test_ranking_is_stable_and_correct():
-    """BIG wins: the heaviest load per runway and parallels 800 ft apart."""
+    """GRW wins: the fastest-growing metro and rising enplanements."""
     ranked = tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]
-    assert [row["iata"] for row in ranked] == ["BIG", "GRW", "FLT", "TNY", "CGO"]
-    assert ranked[0]["components"]["load"] == 100.0
-    assert ranked[0]["components"]["growth"] == 0.0
-    assert ranked[0]["components"]["spacing"] == 100.0
+    assert [row["iata"] for row in ranked] == ["GRW", "TNY", "CGO", "BIG", "FLT"]
+    assert ranked[0]["components"]["catchment"] == 100.0
 
 
 def test_catchment_is_scored_independently_of_load():
@@ -87,13 +101,47 @@ def test_airport_missing_inputs_is_reported_not_scored():
     assert "NRW" in {r["iata"] for r in result["unscored_missing_data"]}
 
 
+def test_development_need_is_reported_but_not_scored():
+    """Cost reaches the answer without moving the ranking.
+
+    It is the FAA's estimate of what an airport needs built, not what a project
+    would earn, so it cannot be scored as if it were a return. A missing row
+    must read as unknown, never as free.
+    """
+    rows = {r["iata"]: r
+            for r in tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]}
+    assert rows["TNY"]["development_need_per_enplanement"] == 75.0
+    assert rows["BIG"]["development_need_per_enplanement"] == 20.0
+    assert rows["GRW"]["development_need_per_enplanement"] is None
+    assert "development_need_usd" not in tools.WEIGHTS
+
+    without_cost = tools.rank_expansion_candidates(iatas=["BIG", "GRW"])["ranked"]
+    assert [r["iata"] for r in without_cost] == ["GRW", "BIG"]
+
+
+def test_revenue_per_passenger_finds_the_under_monetised_airport():
+    """BIG takes the most money and the least per head.
+
+    That gap is the whole point of the ratio: totals follow airport size, so
+    only the per-passenger figure shows an airport failing to sell to traffic
+    it already has. A missing filing must read as unknown, never as zero.
+    """
+    rows = {r["iata"]: r
+            for r in tools.rank_expansion_candidates(states=NEW_ENGLAND)["ranked"]}
+    assert rows["BIG"]["non_aeronautical_revenue"] > rows["FLT"]["non_aeronautical_revenue"]
+    assert rows["BIG"]["non_aero_revenue_per_enplanement"] == 5.0
+    assert rows["FLT"]["non_aero_revenue_per_enplanement"] == 10.0
+    assert rows["TNY"]["non_aero_revenue_per_enplanement"] is None
+    assert rows["BIG"]["operating_margin"] == 0.15
+
+
 def test_ranking_is_relative_to_the_group_given():
-    """Dropping the leader rescales the rest, so scores are peer-relative."""
-    with_big = tools.rank_expansion_candidates(iatas=["BIG", "GRW", "TNY"])["ranked"]
+    """Dropping an airport rescales the rest, so scores are peer-relative."""
+    with_big = tools.rank_expansion_candidates(iatas=["GRW", "TNY", "BIG"])["ranked"]
     without = tools.rank_expansion_candidates(iatas=["GRW", "TNY"])["ranked"]
-    grw_with = next(r["score"] for r in with_big if r["iata"] == "GRW")
-    grw_without = next(r["score"] for r in without if r["iata"] == "GRW")
-    assert grw_with != grw_without
+    tny_with = next(r["score"] for r in with_big if r["iata"] == "TNY")
+    tny_without = next(r["score"] for r in without if r["iata"] == "TNY")
+    assert tny_with != tny_without
 
 
 def test_cargo_growth_filters_tiny_bases():

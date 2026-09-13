@@ -10,10 +10,8 @@ const fileInput = document.getElementById("file");
 const attachmentBar = document.getElementById("attachments");
 const account = document.querySelector(".account");
 const userEmail = document.getElementById("user-email");
-const sidebar = document.getElementById("sidebar");
 const sessionList = document.getElementById("session-list");
 const newChatBtn = document.getElementById("new-chat");
-const toggleSidebar = document.getElementById("toggle-sidebar");
 
 let currentSessionId = null;
 
@@ -91,10 +89,6 @@ async function openSession(sessionId) {
 }
 
 newChatBtn.addEventListener("click", startNewChat);
-
-toggleSidebar.addEventListener("click", () => {
-  sidebar.hidden = !sidebar.hidden;
-});
 
 loadSessions();
 

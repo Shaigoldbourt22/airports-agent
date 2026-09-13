@@ -81,6 +81,13 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     session_id: str
+    # Present only where EXPOSE_TRACE is set, which the evaluation deployment
+    # does so tests can check that every figure came from a tool. Production
+    # leaves it unset: the trace exposes query internals to end users.
+    trace: list[dict] | None = None
+
+
+EXPOSE_TRACE = os.environ.get("EXPOSE_TRACE") == "1"
 
 
 class SessionSummary(BaseModel):
@@ -136,8 +143,9 @@ def remove_session(session_id: str, request: Request) -> None:
 def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     user = authorised_user(http_request)
     session_id = request.session_id
+    trace: list | None = [] if EXPOSE_TRACE else None
     try:
-        text = agent.reply([m.model_dump() for m in request.messages])
+        text = agent.reply([m.model_dump() for m in request.messages], trace=trace)
     except agent.ModelUnavailable as exc:
         telemetry.event("chat_failed", level=logging.ERROR, reason="not_configured",
                         session_id=session_id, status=503)
@@ -176,7 +184,7 @@ def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     )
     telemetry.event("chat_ok", session_id=session_id, turns=len(request.messages),
                     reply_chars=len(text))
-    return ChatResponse(reply=text, session_id=session_id)
+    return ChatResponse(reply=text, session_id=session_id, trace=trace)
 
 
 @app.get("/healthz")

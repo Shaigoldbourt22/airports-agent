@@ -16,7 +16,13 @@ MAX_SESSIONS_PER_USER = 50
 MAX_MESSAGES_PER_SESSION = 50
 
 ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = Path(os.environ.get("DB_DIR", ROOT / "data")) / "sessions.db"
+# Sessions sit beside the aviation database by default. SESSIONS_DIR moves them
+# elsewhere, which a second deployment sharing the same volume needs: the
+# connection below takes an exclusive lock for the life of the process, so two
+# apps cannot write the same file, and test traffic should not land in real
+# users' history either.
+SESSIONS_DIR = os.environ.get("SESSIONS_DIR") or os.environ.get("DB_DIR")
+DB_PATH = Path(SESSIONS_DIR or ROOT / "data") / "sessions.db"
 
 _con: sqlite3.Connection | None = None
 _lock = Lock()
@@ -46,10 +52,16 @@ def _connect() -> sqlite3.Connection:
     global _con
     if _con is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(DB_PATH, check_same_thread=False)
+        con = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
         con.row_factory = sqlite3.Row
         # WAL needs shared memory, which SMB shares like Azure Files do not provide.
         con.execute("PRAGMA journal_mode=DELETE")
+        # Azure Files does not support the byte-range locks SQLite normally takes
+        # for every transaction, which surfaces as "database is locked". Taking a
+        # single lock for the life of the process avoids them. Safe because the
+        # app is pinned to one replica and _lock serialises writes in-process.
+        con.execute("PRAGMA locking_mode=EXCLUSIVE")
+        con.execute("PRAGMA busy_timeout=30000")
         con.execute("PRAGMA foreign_keys=ON")
         con.executescript(SCHEMA)
         con.commit()

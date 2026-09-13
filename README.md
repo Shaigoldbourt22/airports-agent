@@ -5,7 +5,8 @@ likely to pay off. It answers in prose, but every figure comes from a
 deterministic tool, never from the model.
 
 **Try it:** [airports-agent.victoriousgrass-4e3f5a75.eastus.azurecontainerapps.io](https://airports-agent.victoriousgrass-4e3f5a75.eastus.azurecontainerapps.io)
-— sign in with Google. Access is by allowlist; ask me to add your address.
+— sign in with any Google account. Sign-in only separates one person's chat
+history from another's; it is not a restriction.
 
 **Source:** [github.com/Shaigoldbourt22/airports-agent](https://github.com/Shaigoldbourt22/airports-agent)
 

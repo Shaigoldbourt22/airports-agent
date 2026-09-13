@@ -1,6 +1,10 @@
 name: Deploy
 
-# The web app redeploys on every push to main.
+# Every push to main goes to the evaluation app first, is asked the four
+# golden questions there, and only reaches production if it answers them
+# correctly. Both apps run the same image, so what production gets is the
+# artefact the tests passed against, not a rebuild of it.
+#
 # The ETL image is rebuilt only when ETL code changes, and the job is
 # repointed at the new tag. The job is never started here - the cron
 # schedule is the only thing that runs a data fetch. Use the manual
@@ -24,6 +28,7 @@ env:
   RG: airports-agent-rg
   ACR: ca61231809e1acr
   APP: airports-agent
+  EVAL_APP: airports-agent-eval
   JOB: airports-etl
 
 jobs:
@@ -36,9 +41,8 @@ jobs:
           python-version: '3.13'
           cache: pip
       - run: pip install -q -r requirements.txt -r requirements-dev.txt
-      # Scoring and query checks, run against a fixture database so they need
-      # no ETL output and no API key. The golden questions call Gemini and are
-      # run locally before a prompt or tool change ships.
+      # Scoring and query checks against a fixture database, so they need no
+      # ETL output and no API key.
       - run: pytest
 
   changes:
@@ -56,7 +60,7 @@ jobs:
               - 'Dockerfile.etl'
               - 'requirements-etl.txt'
 
-  app:
+  staging:
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -68,7 +72,49 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Build image
         run: az acr build --registry $ACR --image $APP:${{ github.sha }} --no-logs .
-      - name: Update container app
+      - name: Deploy to the evaluation app
+        run: az containerapp update -n $EVAL_APP -g $RG --image $ACR.azurecr.io/$APP:${{ github.sha }} -o none
+      - name: Wait for the new revision to serve
+        run: |
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' ${{ secrets.EVAL_URL }}/healthz)" = "200" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Evaluation app did not become healthy"
+          exit 1
+
+  golden:
+    needs: staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install -q -r requirements.txt -r requirements-dev.txt
+      # Asks the running evaluation app the four questions the agent exists to
+      # answer, checks every figure against the tool trace it returns, and has
+      # a second model grade the reasoning.
+      - run: pytest -m llm
+        env:
+          AGENT_URL: ${{ secrets.EVAL_URL }}
+          AGENT_TOKEN: ${{ secrets.EVAL_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+  app:
+    needs: golden
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # The image the golden tests just passed against, not a rebuild.
+      - name: Promote to production
         run: az containerapp update -n $APP -g $RG --image $ACR.azurecr.io/$APP:${{ github.sha }} -o none
 
   etl:

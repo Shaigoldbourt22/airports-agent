@@ -38,13 +38,10 @@ it as `airfield_pressure`, from `load` (0.7) and `spacing` (0.3):
 
 The two were one score until the separation was forced by its own output.
 Boston came first for terminal expansion on the strength of the heaviest runway
-load in New England and the tightest parallel spacing, while the answer
-explaining the result had to admit that a terminal there would add no flights,
-because the runways cap the airport before the gates do. A score that ranks an
-airport first on the very measure that makes the project pointless is measuring
-the wrong thing. Airfield pressure now travels with an `airfield_constrained`
-flag instead, and the prompt requires the answer to say plainly that gates alone
-will not add throughput where it is set.
+load in New England, while the answer explaining the result had to admit a
+terminal there would add no flights, because the runways cap the airport before
+the gates do. Airfield pressure now travels with an `airfield_constrained` flag,
+and the prompt requires the answer to say so plainly where it is set.
 
 `load` averages enplanements per runway and peak departures per runway. They
 were separate components until measurement showed they correlate at **r = 0.92**
@@ -72,35 +69,6 @@ worst airport in a set of mildly constrained ones look critical. This is the one
 measure that describes a constraint no amount of spending inside the fence can
 fix.
 
-## Cost and revenue
-
-Two figures come from the FAA and are reported next to the ranking without
-entering it.
-
-`development_need_usd` is the FAA's own five-year estimate of eligible
-development cost, from the NPIAS. Divided by annual passengers it gives the
-scale of capital a site needs per passenger it already serves — $43 at Boston
-against $124 at Burlington. It is needed development rather than funded spend,
-and it covers airside work as well as terminal work, so it is not a project
-price.
-
-`non_aero_revenue_per_enplanement` comes from each airport's own Form 127
-filing: what it earns per passenger from food, retail, parking and car hire.
-This is the closest thing available to a return on a terminal, because heavy
-traffic with a thin take per head means the passengers are already inside and
-the airport is not selling to them. Aeronautical revenue cannot show that, since
-landing fees follow aircraft weight rather than the quality of the terminal.
-
-Neither is scored. A cost is not a return, and a whole-airport revenue figure a
-year or two behind the flight data cannot be read as one terminal's takings.
-They describe an airport; they do not rank it.
-
-What is still missing is worth stating: gate lease terms, bond covenants and
-debt service coverage, airline yields, and slot caps or curfews. None is
-published per airport in a form that can be fetched, so the agent can say where
-demand and constraint are, what capital is needed, and what a site currently
-earns per passenger — but never what a specific project would return.
-
 An airport missing any input is never silently dropped. It is returned under
 `unscored_missing_data` with the specific input it lacks, and the prompt
 requires the answer to name it: the airport that cannot be scored is often the
@@ -117,6 +85,28 @@ instructed never to invent a gate number.
 out airports posting +100% on a few tonnes, and the excluded ones are returned
 so the filter can be reported rather than hidden.
 
+## Cost and revenue
+
+Two FAA figures are reported next to the ranking without entering it.
+
+`development_need_usd` is the FAA's five-year estimate of eligible development
+cost, from the NPIAS. Per passenger it gives the scale of capital a site needs
+— $43 at Boston against $124 at Burlington. It is needed rather than funded
+spend, and covers airside work too, so it is not a project price.
+
+`non_aero_revenue_per_enplanement` comes from each airport's Form 127 filing:
+what it earns per passenger from food, retail, parking and car hire. Heavy
+traffic with a thin take per head means the passengers are already inside and
+the airport is not selling to them. Aeronautical revenue cannot show that, since
+landing fees follow aircraft weight rather than the terminal.
+
+Neither is scored. A cost is not a return, and a whole-airport figure a year or
+two behind the flight data is not one terminal's takings.
+
+Still missing: gate leases, bond covenants, airline yields, slot caps. None is
+published per airport, so the agent can say where demand and constraint are and
+what a site earns per passenger, but never what a project would return.
+
 ## Where AI is used, and where it is not
 
 The model **chooses tools and writes prose**. It never computes.
@@ -124,9 +114,9 @@ The model **chooses tools and writes prose**. It never computes.
 - Every figure in an answer comes from a tool result. The system prompt in
   [prompts/system.md](../prompts/system.md) forbids estimating or recalling
   numbers, and requires saying which data is missing instead. Arithmetic counts
-  as inventing: the grounding check caught a long-haul share of 4.8% that no
-  tool returned, because the model had averaged twelve monthly percentages, and
-  a computed average reads as measured when it is not.
+  as inventing: the grounding check caught a long-haul share of 4.8% the model
+  had averaged from twelve monthly figures, which reads as measured when it is
+  not.
 - Scores, rankings, delay rates and filters are plain SQL and a fixed formula.
   The same question always returns the same score, which is asserted by
   [tests/test_tools.py](../tests/test_tools.py).
